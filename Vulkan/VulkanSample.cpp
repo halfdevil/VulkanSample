@@ -7,7 +7,8 @@ VulkanSample::VulkanSample()
 	mDevice(nullptr),
 	mPresentationSurface(nullptr),
 	mOldSwapChain(VK_NULL_HANDLE),
-	mSwapChain(VK_NULL_HANDLE)
+	mSwapChain(VK_NULL_HANDLE),
+	mCommandPool(nullptr)
 {
 }
 
@@ -232,6 +233,7 @@ void VulkanSample::PopulatePhysicalDeviceFeaturesAndProperties()
 {
 	vkGetPhysicalDeviceFeatures(mPhysicalDevice, &mPhysicalDeviceFeatures);
 	vkGetPhysicalDeviceProperties(mPhysicalDevice, &mPhysicalDeviceProperties);
+	vkGetPhysicalDeviceMemoryProperties(mPhysicalDevice, &mPhysicalDeviceMemoryProperties);
 }
 
 void VulkanSample::LogPhysicalDeviceProperties()
@@ -697,3 +699,638 @@ void VulkanSample::DestroySwapChain()
 
 	mSwapChain = nullptr;
 }
+
+bool VulkanSample::CreateCommandPool(VkCommandPoolCreateFlags createFlags)
+{
+	VkResult result = VK_SUCCESS;
+
+	VkCommandPoolCreateInfo createInfo =
+	{
+		VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+		nullptr,
+		createFlags,
+		mQueueFamilyIndex
+	};
+
+	result = vkCreateCommandPool(
+		mDevice,
+		&createInfo,
+		nullptr,
+		&mCommandPool
+	);
+
+	if (result != VK_SUCCESS || mCommandPool == nullptr)
+	{
+		LOG_ERROR("Unable to create Command pool");
+		return false;
+	}
+
+	return true;
+}
+
+void VulkanSample::DestroyCommandPool()
+{
+	if (mCommandPool)
+		vkDestroyCommandPool(mDevice, mCommandPool, nullptr);
+
+	mCommandPool = nullptr;
+}
+
+bool VulkanSample::ResetCommandPool(bool releaseResources)
+{
+	VkResult result = vkResetCommandPool(
+		mDevice,
+		mCommandPool,
+		releaseResources ? VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT : 0
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LOG_ERROR("Unable to reset Command pool");
+		return false;
+	}
+
+	return true;
+}
+
+bool VulkanSample::AllocateCommandBuffers(uint32_t count, VkCommandBufferLevel level, std::vector<VkCommandBuffer> &buffers)
+{
+	VkResult result = VK_SUCCESS;	
+
+	VkCommandBufferAllocateInfo allocateInfo =
+	{
+		VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		nullptr,
+		mCommandPool,
+		level,
+		count
+	};
+
+	buffers.resize(count);
+
+	result = vkAllocateCommandBuffers(
+		mDevice,
+		&allocateInfo,
+		&buffers[0]
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LOG_ERROR("Unable to create command buffers");
+		return false;
+	}
+
+	return true;
+}
+
+void VulkanSample::FreeCommandBuffers(const std::vector<VkCommandBuffer>& buffers)
+{
+	vkFreeCommandBuffers(
+		mDevice,
+		mCommandPool,
+		static_cast<uint32_t>(buffers.size()),
+		&buffers[0]
+	);
+}
+
+bool VulkanSample::BeginCommandBuffer(VkCommandBuffer buffer, VkCommandBufferLevel level, 
+	VkCommandBufferUsageFlags usage, VkCommandBufferInheritanceInfo *inheritenceInfo)
+{
+	VkResult result = VK_SUCCESS;
+
+	VkCommandBufferBeginInfo beginInfo =
+	{
+		VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		nullptr,
+		usage,
+		inheritenceInfo
+	};
+
+	result = vkBeginCommandBuffer(
+		buffer,
+		&beginInfo
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LOG_ERROR("Unable to begin Command buffer");
+		return false;
+	}
+
+	return true;
+}
+
+bool VulkanSample::EndCommandBuffer(VkCommandBuffer buffer)
+{
+	VkResult result = vkEndCommandBuffer(buffer);
+
+	if (result != VK_SUCCESS)
+	{
+		LOG_ERROR("Unable to end Command buffer");
+		return false;
+	}
+
+	return true;
+}
+
+bool VulkanSample::ResetCommandBuffer(VkCommandBuffer buffer, bool releaseResources)
+{
+	VkResult result = vkResetCommandBuffer(
+		buffer,
+		releaseResources ? VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT : 0
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LOG_ERROR("Unable to reset Command buffer");
+		return false;
+	}
+
+	return true;
+}
+
+bool VulkanSample::CreateVulkanSemaphore(VkSemaphore * semaphore)
+{
+	VkResult result = VK_SUCCESS;
+
+	VkSemaphoreCreateInfo createInfo =
+	{
+		VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+		nullptr,
+		0
+	};
+
+	result = vkCreateSemaphore(
+		mDevice,
+		&createInfo,
+		nullptr,
+		semaphore
+	);
+
+	if (result != VK_SUCCESS || *semaphore == nullptr)
+	{
+		LOG_ERROR("Unable to create Semaphore");
+		return false;
+	}
+
+	return true;
+}
+
+void VulkanSample::DestroyVulkanSemaphore(VkSemaphore semaphore)
+{
+	vkDestroySemaphore(
+		mDevice,
+		semaphore,
+		nullptr
+	);
+}
+
+bool VulkanSample::CreateFence(VkFence * fence, bool isSignaled)
+{
+	VkResult result = VK_SUCCESS;
+
+	VkFenceCreateInfo createInfo =
+	{
+		VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		nullptr,
+		isSignaled ? VK_FENCE_CREATE_SIGNALED_BIT : 0ul
+	};
+
+	result = vkCreateFence(
+		mDevice,
+		&createInfo,
+		nullptr,
+		fence
+	);
+
+	if (result != VK_SUCCESS || *fence == nullptr)
+	{
+		LOG_ERROR("Unable to create Fence");
+		return false;
+	}
+
+	return true;
+}
+
+void VulkanSample::DestroyFence(VkFence fence)
+{
+	vkDestroyFence(
+		mDevice,
+		fence,
+		nullptr
+	);
+}
+
+bool VulkanSample::ResetFences(const std::vector<VkFence>& fences)
+{
+	if (fences.size() > 0)
+	{
+		VkResult result = vkResetFences(
+			mDevice,
+			static_cast<uint32_t>(fences.size()),
+			&fences[0]
+		);
+
+		if (result != VK_SUCCESS)
+		{
+			LOG_ERROR("Unable to reset fences");
+			return false;
+		}
+
+		return true;
+	}
+
+	return false;
+}
+
+bool VulkanSample::WaitForFences(const std::vector<VkFence>& fences, bool waitForAll, uint64_t timeout)
+{
+	if (fences.size() > 0)
+	{
+		VkResult result = vkWaitForFences(
+			mDevice,
+			static_cast<uint32_t>(fences.size()),
+			&fences[0],
+			waitForAll ? VK_TRUE : VK_FALSE,
+			timeout
+		);
+
+		if (result != VK_SUCCESS)
+		{
+			LOG_ERROR("Waiting for fences failed");
+			return false;
+		}
+
+		return true;
+	}
+
+	return false;
+}
+
+bool VulkanSample::SubmitCommandBuffers(uint32_t queueIndex,
+	const std::vector<VkCommandBuffer>& buffers,
+	const std::vector<VkSemaphore>& waitSemaphores, 
+	const std::vector<VkPipelineStageFlags>& waitStates, 
+	const std::vector<VkSemaphore>& signaledSemaphores, 
+	VkFence fence)
+{
+	VkResult result = VK_SUCCESS;
+
+	VkSubmitInfo submitInfo =
+	{
+		VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		nullptr,
+		static_cast<uint32_t>(waitSemaphores.size()),
+		waitSemaphores.size() > 0 ? &waitSemaphores[0] : nullptr,
+		waitStates.size() > 0 ? &waitStates[0] : nullptr,
+		static_cast<uint32_t>(buffers.size()),
+		buffers.size() > 0 ? &buffers[0] : nullptr,
+		static_cast<uint32_t>(signaledSemaphores.size()),
+		signaledSemaphores.size() > 0 ? &signaledSemaphores[0] : nullptr
+	};
+
+	result = vkQueueSubmit(
+		mQueues[queueIndex],
+		1,
+		&submitInfo,
+		fence
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LOG_ERROR("Unable to submit Command buffers");
+		return false;
+	}
+
+	return true;
+}
+
+bool VulkanSample::CreateBuffer(VkBuffer * buffer, 
+	VkDeviceMemory * memory, 
+	VkBufferUsageFlags usage, 
+	VkDeviceSize size, 
+	VkMemoryPropertyFlags propertyFlags)
+{
+	VkResult result = VK_SUCCESS;
+
+	VkBufferCreateInfo createInfo =
+	{
+		VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		nullptr,
+		0,
+		size,
+		usage,
+		VK_SHARING_MODE_EXCLUSIVE,
+		0,
+		nullptr
+	};
+
+	result = vkCreateBuffer(
+		mDevice,
+		&createInfo,
+		nullptr,
+		buffer
+	);
+
+	if (result != VK_SUCCESS || *buffer == nullptr)
+	{
+		LOG_ERROR("Unable to create buffer");
+		return false;
+	}
+
+	VkMemoryRequirements memoryRequirements;
+	vkGetBufferMemoryRequirements(
+		mDevice,
+		*buffer,
+		&memoryRequirements
+	);
+		
+	for (uint32_t type = 0; type < mPhysicalDeviceMemoryProperties.memoryTypeCount; type++)
+	{
+		if (memoryRequirements.memoryTypeBits & (1 << type))
+		{
+			if (mPhysicalDeviceMemoryProperties.memoryTypes[type].propertyFlags & propertyFlags)
+			{
+				VkMemoryAllocateInfo allocateInfo =
+				{
+					VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+					nullptr,
+					memoryRequirements.size,
+					type
+				};
+
+				result = vkAllocateMemory(
+					mDevice,
+					&allocateInfo,
+					nullptr,
+					memory
+				);
+
+				if (result == VK_SUCCESS)
+					break;
+			}
+		}
+	}
+
+	if (*memory == nullptr)
+	{
+		LOG_ERROR("Unable to allocate memory for buffer");
+		return false;
+	}
+
+	result = vkBindBufferMemory(
+		mDevice,
+		*buffer,
+		*memory,
+		0
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LOG_ERROR("Unable to bind memory to buffer");
+		return false;
+	}
+
+	return true;
+}
+
+void VulkanSample::DestroyBuffer(VkBuffer buffer, VkDeviceMemory memory)
+{
+	if (memory)
+	{
+		vkFreeMemory(
+			mDevice,
+			memory,
+			nullptr
+		);
+	}		
+
+	if (buffer)
+	{
+		vkDestroyBuffer(
+			mDevice,
+			buffer,
+			nullptr
+		);
+	}
+}
+
+void VulkanSample::SetBuffersMemoryBarrier(VkCommandBuffer commandBuffer, 
+	const std::vector<VkBuffer>& buffers, 
+	const std::vector<VkAccessFlags>& currentAccess, 
+	const std::vector<VkAccessFlags>& newAccess, 
+	VkPipelineStageFlags generatingStages, 
+	VkPipelineStageFlags consumingStages)
+{
+	std::vector<VkBufferMemoryBarrier> memoryBarriers;
+
+	for (uint32_t index = 0; index < static_cast<uint32_t>(buffers.size()); index++)
+	{
+		memoryBarriers.push_back({
+			VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+			nullptr,
+			currentAccess[index],
+			newAccess[index],
+			VK_QUEUE_FAMILY_IGNORED,
+			VK_QUEUE_FAMILY_IGNORED,
+			buffers[index],
+			0,
+			VK_WHOLE_SIZE
+		});
+	}
+
+	vkCmdPipelineBarrier(
+		commandBuffer,
+		generatingStages,
+		consumingStages,
+		0,
+		0,
+		nullptr,
+		static_cast<uint32_t>(memoryBarriers.size()),
+		memoryBarriers.size() > 0 ? &memoryBarriers[0] : nullptr,
+		0, nullptr
+	);
+}
+
+bool VulkanSample::CreateBufferView(VkBuffer buffer, VkBufferView * view, 
+	VkFormat format, VkDeviceSize offset, VkDeviceSize size)
+{
+	VkResult result = VK_SUCCESS;
+
+	VkBufferViewCreateInfo createInfo =
+	{
+		VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
+		nullptr,
+		0,
+		buffer,
+		format,
+		offset,
+		size
+	};
+
+	result = vkCreateBufferView(
+		mDevice,
+		&createInfo,
+		nullptr,
+		view
+	);
+
+	if (result != VK_SUCCESS || *view == nullptr)
+	{
+		LOG_ERROR("Unable to create Buffer view");
+		return false;
+	}
+
+	return true;
+}
+
+bool VulkanSample::CreateImage(VkImageType type, 
+	bool cubemap, 
+	VkFormat format, 
+	VkExtent3D size, 
+	uint32_t numMipMaps, 
+	uint32_t numLayers, 
+	VkSampleCountFlagBits samples, 
+	VkImageUsageFlags usage,
+	VkMemoryPropertyFlags propertyFlags,
+	VkDeviceMemory *memory, 
+	VkImage * image)
+{
+	VkResult result = VK_SUCCESS;
+
+	VkImageCreateInfo createInfo =
+	{
+		VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		nullptr,
+		cubemap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0,
+		type,
+		format,
+		size,
+		numMipMaps,
+		cubemap ? numLayers * 6 : numLayers,
+		samples,
+		VK_IMAGE_TILING_OPTIMAL,
+		usage,
+		VK_SHARING_MODE_EXCLUSIVE,
+		0,
+		nullptr,
+		VK_IMAGE_LAYOUT_UNDEFINED
+	};
+
+	result = vkCreateImage(
+		mDevice,
+		&createInfo,
+		nullptr,
+		image
+	);
+
+	if (result != VK_SUCCESS || *image == nullptr)
+	{
+		LOG_ERROR("Unable to create image");
+		return false;
+	}
+
+	VkMemoryRequirements memoryRequirements;
+	vkGetImageMemoryRequirements(
+		mDevice,
+		*image,
+		&memoryRequirements
+	);
+
+	for (uint32_t type = 0; type < mPhysicalDeviceMemoryProperties.memoryTypeCount; type++)
+	{
+		if (memoryRequirements.memoryTypeBits & (1 << type))
+		{
+			if (mPhysicalDeviceMemoryProperties.memoryTypes[type].propertyFlags & propertyFlags)
+			{
+				VkMemoryAllocateInfo allocateInfo =
+				{
+					VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+					nullptr,
+					memoryRequirements.size,
+					type
+				};
+
+				result = vkAllocateMemory(
+					mDevice,
+					&allocateInfo,
+					nullptr,
+					memory
+				);
+
+				if (result == VK_SUCCESS)
+					break;
+			}
+		}
+	}
+
+	if (*memory == nullptr)
+	{
+		LOG_ERROR("Unable to allocate memory for image");
+		return false;
+	}
+
+	result = vkBindImageMemory(
+		mDevice,
+		*image,
+		*memory,
+		0
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LOG_ERROR("Unable to bind memory to image");
+		return false;
+	}
+
+	return true;
+}
+
+void VulkanSample::SetImagesMemoryBarrier(VkCommandBuffer commandBuffer, 
+	const std::vector<VkImage>& images, 
+	const std::vector<VkAccessFlags>& currentAccess, 
+	const std::vector<VkAccessFlags>& newAccess, 
+	const std::vector<VkImageLayout>& currentLayout, 
+	const std::vector<VkImageLayout>& newLayout, 
+	const std::vector<VkImageAspectFlags>& aspectFlags, 
+	VkPipelineStageFlags generatingStages, 
+	VkPipelineStageFlags consumingStages)
+{
+	std::vector<VkImageMemoryBarrier> memoryBarriers;
+
+	for (uint32_t index = 0; index < static_cast<uint32_t>(images.size()); index++)
+	{
+		memoryBarriers.push_back({
+			VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			nullptr,
+			currentAccess[index],
+			newAccess[index],
+			currentLayout[index],
+			newLayout[index],
+			VK_QUEUE_FAMILY_IGNORED,
+			VK_QUEUE_FAMILY_IGNORED,
+			images[index], 
+			{
+				aspectFlags[index],
+				0,
+				VK_REMAINING_MIP_LEVELS,
+				0,
+				VK_REMAINING_ARRAY_LAYERS
+			}
+		});
+	}
+
+	vkCmdPipelineBarrier(
+		commandBuffer,
+		generatingStages,
+		consumingStages,
+		0,
+		0,
+		nullptr,
+		0,
+		nullptr,
+		static_cast<uint32_t>(memoryBarriers.size()), 
+		memoryBarriers.size() > 0 ? &memoryBarriers[0] : nullptr
+	);
+}
+

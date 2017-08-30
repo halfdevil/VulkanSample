@@ -21,6 +21,7 @@ private:
 	VkPhysicalDevice						mPhysicalDevice;
 	VkPhysicalDeviceFeatures				mPhysicalDeviceFeatures;
 	VkPhysicalDeviceProperties				mPhysicalDeviceProperties;
+	VkPhysicalDeviceMemoryProperties		mPhysicalDeviceMemoryProperties;
 	uint32_t								mQueueFamilyIndex;
 	VkDevice								mDevice;
 	VulkanWindow							mWindow;
@@ -32,6 +33,7 @@ private:
 	VkSurfaceFormatKHR						mPresentationSurfaceFormat;
 	VkSwapchainKHR							mOldSwapChain;
 	VkSwapchainKHR							mSwapChain;
+	VkCommandPool							mCommandPool;
 	
 	std::vector<VkPhysicalDevice>			mDevices;
 	std::vector<VkExtensionProperties>		mInstanceExtensions;	
@@ -72,7 +74,9 @@ public:
 	void DestroyDevice();
 	bool GetQueues(uint32_t queueCount);
 
-	bool CreateVulkanWindow(uint32_t width, uint32_t height, const std::string &title = "Vulkan Window");
+	bool CreateVulkanWindow(uint32_t width, uint32_t height, 
+		const std::string &title = "Vulkan Window");
+
 	void ShowVulkanWindow();
 	void DestroyVulkanWindow();
 
@@ -87,6 +91,82 @@ public:
 
 	bool CreateSwapChain();
 	void DestroySwapChain();
+
+	bool CreateCommandPool(VkCommandPoolCreateFlags createFlags);
+	void DestroyCommandPool();
+	bool ResetCommandPool(bool releaseResources);
+
+	bool AllocateCommandBuffers(uint32_t count, VkCommandBufferLevel level, 
+		std::vector<VkCommandBuffer> &buffers);
+
+	void FreeCommandBuffers(const std::vector<VkCommandBuffer> &buffers);
+
+	bool BeginCommandBuffer(VkCommandBuffer buffer, 
+		VkCommandBufferLevel level,
+		VkCommandBufferUsageFlags usage,
+		VkCommandBufferInheritanceInfo *inheritenceInfo);
+
+	bool EndCommandBuffer(VkCommandBuffer buffer);
+	bool ResetCommandBuffer(VkCommandBuffer buffer, bool releaseResources);
+
+	bool CreateVulkanSemaphore(VkSemaphore *semaphore);
+	void DestroyVulkanSemaphore(VkSemaphore semaphore);
+
+	bool CreateFence(VkFence *fence, bool isSignaled);
+	void DestroyFence(VkFence fence);
+
+	bool ResetFences(const std::vector<VkFence> &fences);
+	bool WaitForFences(const std::vector<VkFence> &fences,
+		bool waitForAll, uint64_t timeout);
+
+	bool SubmitCommandBuffers(uint32_t queueIndex, 
+		const std::vector<VkCommandBuffer> &buffers,
+		const std::vector<VkSemaphore> &waitSemaphores,
+		const std::vector<VkPipelineStageFlags> &waitStates,
+		const std::vector<VkSemaphore> &signaledSemaphores,
+		VkFence fence);
+
+	bool CreateBuffer(VkBuffer *buffer, 
+		VkDeviceMemory * memory, 
+		VkBufferUsageFlags usage,
+		VkDeviceSize size, 
+		VkMemoryPropertyFlags propertyFlags);
+
+	void DestroyBuffer(VkBuffer buffer, VkDeviceMemory memory);
+
+	void SetBuffersMemoryBarrier(VkCommandBuffer commandBuffer, 
+		const std::vector<VkBuffer> &buffers,
+		const std::vector<VkAccessFlags> &currentAccess,
+		const std::vector<VkAccessFlags> &newAccess, 
+		VkPipelineStageFlags generatngStages,
+		VkPipelineStageFlags consumingStages);
+
+	bool CreateBufferView(VkBuffer buffer, VkBufferView *view, 
+		VkFormat format, VkDeviceSize offset, VkDeviceSize size);
+
+	bool CreateImage(VkImageType type, 
+		bool cubemap, 
+		VkFormat format,
+		VkExtent3D size, 
+		uint32_t numMipMaps, 
+		uint32_t numLayers, 
+		VkSampleCountFlagBits samples,
+		VkImageUsageFlags usage, 
+		VkMemoryPropertyFlags propertyFlags,
+		VkDeviceMemory *memory,
+		VkImage *image);
+
+	void SetImagesMemoryBarrier(VkCommandBuffer commandBuffer,
+		const std::vector<VkImage> &images,
+		const std::vector<VkAccessFlags> &currentAccess,
+		const std::vector<VkAccessFlags> &newAccess,
+		const std::vector<VkImageLayout> &currentLayout,
+		const std::vector<VkImageLayout> &newLayout,
+		const std::vector<VkImageAspectFlags> &aspectFlags,
+		VkPipelineStageFlags generatngStages,
+		VkPipelineStageFlags consumingStages);
+
+
 
 private:
 

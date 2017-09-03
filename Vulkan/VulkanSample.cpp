@@ -1005,11 +1005,12 @@ bool VulkanSample::SubmitCommandBuffers(uint32_t queueIndex,
 	return true;
 }
 
-bool VulkanSample::CreateBuffer(VkBuffer * buffer, 
-	VkDeviceMemory * memory, 
+bool VulkanSample::CreateBuffer( 
 	VkBufferUsageFlags usage, 
 	VkDeviceSize size, 
-	VkMemoryPropertyFlags propertyFlags)
+	VkMemoryPropertyFlags propertyFlags, 
+	VkBuffer * buffer,
+	VkDeviceMemory * memory)
 {
 	VkResult result = VK_SUCCESS;
 
@@ -1116,24 +1117,22 @@ void VulkanSample::DestroyBuffer(VkBuffer buffer, VkDeviceMemory memory)
 }
 
 void VulkanSample::SetBuffersMemoryBarrier(VkCommandBuffer commandBuffer, 
-	const std::vector<VkBuffer>& buffers, 
-	const std::vector<VkAccessFlags>& currentAccess, 
-	const std::vector<VkAccessFlags>& newAccess, 
+	const std::vector<BufferMemoryTransition> &bufferTransitions,
 	VkPipelineStageFlags generatingStages, 
 	VkPipelineStageFlags consumingStages)
 {
 	std::vector<VkBufferMemoryBarrier> memoryBarriers;
 
-	for (uint32_t index = 0; index < static_cast<uint32_t>(buffers.size()); index++)
+	for (uint32_t index = 0; index < static_cast<uint32_t>(bufferTransitions.size()); index++)
 	{
 		memoryBarriers.push_back({
 			VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
 			nullptr,
-			currentAccess[index],
-			newAccess[index],
+			bufferTransitions[index].CurrentAccess,
+			bufferTransitions[index].NewAccess,
 			VK_QUEUE_FAMILY_IGNORED,
 			VK_QUEUE_FAMILY_IGNORED,
-			buffers[index],
+			bufferTransitions[index].Buffer,
 			0,
 			VK_WHOLE_SIZE
 		});
@@ -1152,8 +1151,11 @@ void VulkanSample::SetBuffersMemoryBarrier(VkCommandBuffer commandBuffer,
 	);
 }
 
-bool VulkanSample::CreateBufferView(VkBuffer buffer, VkBufferView * view, 
-	VkFormat format, VkDeviceSize offset, VkDeviceSize size)
+bool VulkanSample::CreateBufferView(VkBuffer buffer, 
+	VkFormat format, 
+	VkDeviceSize offset, 
+	VkDeviceSize size,
+	VkBufferView * view)
 {
 	VkResult result = VK_SUCCESS;
 
@@ -1184,6 +1186,12 @@ bool VulkanSample::CreateBufferView(VkBuffer buffer, VkBufferView * view,
 	return true;
 }
 
+void VulkanSample::DestroyBufferView(VkBufferView view)
+{
+	if (view)
+		vkDestroyBufferView(mDevice, view, nullptr);
+}
+
 bool VulkanSample::CreateImage(VkImageType type, 
 	bool cubemap, 
 	VkFormat format, 
@@ -1202,7 +1210,7 @@ bool VulkanSample::CreateImage(VkImageType type,
 	{
 		VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 		nullptr,
-		cubemap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0,
+		cubemap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0ul,
 		type,
 		format,
 		size,
@@ -1286,32 +1294,48 @@ bool VulkanSample::CreateImage(VkImageType type,
 	return true;
 }
 
+void VulkanSample::DestroyImage(VkImage image, VkDeviceMemory memory)
+{
+	if (memory)
+	{
+		vkFreeMemory(
+			mDevice,
+			memory,
+			nullptr
+		);
+	}
+
+	if (image)
+	{
+		vkDestroyImage(
+			mDevice, 
+			image, 
+			nullptr
+		);
+	}
+}
+
 void VulkanSample::SetImagesMemoryBarrier(VkCommandBuffer commandBuffer, 
-	const std::vector<VkImage>& images, 
-	const std::vector<VkAccessFlags>& currentAccess, 
-	const std::vector<VkAccessFlags>& newAccess, 
-	const std::vector<VkImageLayout>& currentLayout, 
-	const std::vector<VkImageLayout>& newLayout, 
-	const std::vector<VkImageAspectFlags>& aspectFlags, 
+	const std::vector<ImageMemoryTransition> &imageTransitions,
 	VkPipelineStageFlags generatingStages, 
 	VkPipelineStageFlags consumingStages)
 {
 	std::vector<VkImageMemoryBarrier> memoryBarriers;
 
-	for (uint32_t index = 0; index < static_cast<uint32_t>(images.size()); index++)
+	for (uint32_t index = 0; index < static_cast<uint32_t>(imageTransitions.size()); index++)
 	{
 		memoryBarriers.push_back({
 			VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 			nullptr,
-			currentAccess[index],
-			newAccess[index],
-			currentLayout[index],
-			newLayout[index],
+			imageTransitions[index].CurrentAccess,
+			imageTransitions[index].NewAccess,
+			imageTransitions[index].CurrentLayout,
+			imageTransitions[index].NewLayout,
 			VK_QUEUE_FAMILY_IGNORED,
 			VK_QUEUE_FAMILY_IGNORED,
-			images[index], 
+			imageTransitions[index].Image, 
 			{
-				aspectFlags[index],
+				imageTransitions[index].AspectFlags,
 				0,
 				VK_REMAINING_MIP_LEVELS,
 				0,
@@ -1334,3 +1358,458 @@ void VulkanSample::SetImagesMemoryBarrier(VkCommandBuffer commandBuffer,
 	);
 }
 
+bool VulkanSample::CreateImageView(VkImage image, VkImageViewType type, VkFormat format, VkImageAspectFlags flags, VkImageView * view)
+{
+	VkResult result = VK_SUCCESS;
+
+	VkImageViewCreateInfo createInfo =
+	{
+		VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+		nullptr,
+		0,
+		image,
+		type,
+		format, 
+		{
+			VK_COMPONENT_SWIZZLE_R,
+			VK_COMPONENT_SWIZZLE_G,
+			VK_COMPONENT_SWIZZLE_B,
+			VK_COMPONENT_SWIZZLE_A
+		},
+		{
+			flags,
+			0,
+			VK_REMAINING_MIP_LEVELS,
+			0,
+			VK_REMAINING_ARRAY_LAYERS
+		}
+	};
+
+	result = vkCreateImageView(
+		mDevice,
+		&createInfo,
+		nullptr,
+		view
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LOG_ERROR("Unable to create image view");
+		return false;
+	}
+
+	return true;
+}
+
+void VulkanSample::DestroyImageView(VkImageView view)
+{
+	if (view)
+	{
+		vkDestroyImageView(
+			mDevice,
+			view,
+			nullptr
+		);
+	}
+}
+
+bool VulkanSample::MapMemory(VkDeviceMemory memory, VkDeviceSize offset, VkDeviceSize size, void ** localData)
+{
+	VkResult result = vkMapMemory(
+		mDevice,
+		memory,
+		offset,
+		size,
+		0,
+		localData
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LOG_ERROR("Unable to Map memory");
+		return false;
+	}
+
+	return true;
+}
+
+bool VulkanSample::UnmapMemory(VkDeviceMemory memory, VkDeviceSize offset, VkDeviceSize size)
+{
+	VkResult result = VK_SUCCESS;
+
+	VkMappedMemoryRange mappedRange =
+	{
+		VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+		nullptr,
+		memory,
+		offset,
+		size
+	};
+
+	result = vkFlushMappedMemoryRanges(
+		mDevice,
+		1,
+		&mappedRange
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LOG_ERROR("Unable to flush mapped memory");
+		return false;
+	}
+
+	return true;
+}
+
+bool VulkanSample::CreateSampler(VkFilter magFilter, 
+	VkFilter minFilter, 
+	VkSamplerMipmapMode mipMapMode, 
+	VkSamplerAddressMode addressModeU, 
+	VkSamplerAddressMode addressModeV, 
+	VkSamplerAddressMode addressModeW, 
+	float lodBias, 
+	VkBool32 enableAnisotropy, 
+	float maxAnisotropy, 
+	VkBool32 enableCompare, 
+	VkCompareOp compareOp, 
+	float minLod, 
+	float maxLod, 
+	VkBorderColor borderColor, 
+	VkBool32 unnormalizedCoords,
+	VkSampler *sampler)
+{
+	VkResult result = VK_SUCCESS;
+
+	VkSamplerCreateInfo createInfo =
+	{
+		VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+		nullptr,
+		0,
+		magFilter,
+		minFilter,
+		mipMapMode,
+		addressModeU,
+		addressModeV,
+		addressModeW,
+		lodBias,
+		enableAnisotropy,
+		maxAnisotropy,
+		enableCompare,
+		compareOp,
+		minLod,
+		maxLod,
+		borderColor,
+		unnormalizedCoords
+	};
+
+	result = vkCreateSampler(
+		mDevice,
+		&createInfo,
+		nullptr,
+		sampler
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LOG_ERROR("Unable to create Sampler");
+		return false;
+	}
+
+	return true;
+}
+
+bool VulkanSample::CreateSampledImage(VkImageType type, 
+	bool cubemap, 
+	bool linearFiltering,
+	VkFormat format, 
+	VkExtent3D size, 
+	uint32_t numMipMaps, 
+	uint32_t numLayers, 
+	VkImageUsageFlags usage,
+	VkImageViewType viewType,
+	VkImageAspectFlags aspectFlags,
+	VkDeviceMemory * memory, 
+	VkImage * image, 
+	VkImageView * view)
+{
+	VkFormatProperties formatProperties;
+	vkGetPhysicalDeviceFormatProperties(
+		mPhysicalDevice,
+		format,
+		&formatProperties
+	);
+
+	if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT))
+	{
+		LOG_ERROR("Provided format is not supported for sampled image");
+		return false;
+	}
+
+	if (linearFiltering)
+	{
+		if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+		{
+			LOG_ERROR("Provided format is not supported for linear sampled image");
+			return false;
+		}
+	}
+
+	bool result = CreateImage(
+		type,
+		cubemap,
+		format,
+		size,
+		numMipMaps,
+		numLayers,
+		VK_SAMPLE_COUNT_1_BIT,
+		usage | VK_IMAGE_USAGE_SAMPLED_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		memory,
+		image
+	);
+
+	if (!result)
+	{
+		LOG_ERROR("Unable to create sampled image");
+		return false;
+	}
+
+	result = CreateImageView(
+		*image,
+		viewType,
+		format,
+		aspectFlags,
+		view
+	);
+
+	if (!result)
+	{
+		LOG_ERROR("Unable to create Sampled image view");
+		DestroyImage(*image, *memory);
+
+		return false;
+	}
+
+	return true;
+}
+
+bool VulkanSample::CreateUniformTexelBuffer(VkBufferUsageFlags usage,
+	VkFormat format,
+	VkDeviceSize size,
+	VkBuffer * buffer,
+	VkDeviceMemory * memory,
+	VkBufferView * view)
+{
+	VkFormatProperties formatProperties;
+	vkGetPhysicalDeviceFormatProperties(
+		mPhysicalDevice,
+		format,
+		&formatProperties
+	);
+
+	if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT))
+	{
+		LOG_ERROR("Provided format is not supported for Uniform Texel buffer");
+		return false;
+	}
+
+	bool result = CreateBuffer(
+		usage | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT,
+		size,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		buffer,
+		memory
+	);
+
+	if (!result)
+	{
+		LOG_ERROR("Unable to create Uniform Texel buffer");
+		return false;
+	}
+
+	result = CreateBufferView(
+		*buffer,
+		format,
+		0,
+		VK_WHOLE_SIZE,
+		view
+	);
+
+	if (!result)
+	{
+		LOG_ERROR("Unable to create Uniform Texel buffer view");
+		DestroyBuffer(*buffer, *memory);
+		return false;
+	}
+
+	return true;
+}
+
+bool VulkanSample::CreateStorageTexelBuffer(VkBufferUsageFlags usage,
+	VkFormat format,
+	VkDeviceSize size,
+	VkBuffer * buffer,
+	VkDeviceMemory * memory,
+	VkBufferView * view)
+{
+	VkFormatProperties formatProperties;
+	vkGetPhysicalDeviceFormatProperties(
+		mPhysicalDevice,
+		format,
+		&formatProperties
+	);
+
+	if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT))
+	{
+		LOG_ERROR("Provided format is not supported for Storage Texel buffer");
+		return false;
+	}
+
+	bool result = CreateBuffer(
+		usage | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT,
+		size,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		buffer,
+		memory
+	);
+
+	if (!result)
+	{
+		LOG_ERROR("Unable to create Storage Texel buffer");
+		return false;
+	}
+
+	result = CreateBufferView(
+		*buffer,
+		format,
+		0,
+		VK_WHOLE_SIZE,
+		view
+	);
+
+	if (!result)
+	{
+		LOG_ERROR("Unable to create Uniform Texel buffer view");
+		DestroyBuffer(*buffer, *memory);
+		return false;
+	}
+
+	return true;
+}
+
+bool VulkanSample::CreateUniformBuffer(VkBufferUsageFlags usage,
+	VkDeviceSize size,
+	VkBuffer * buffer,
+	VkDeviceMemory * memory)
+{	
+	bool result = CreateBuffer(
+		usage | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		size,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		buffer,
+		memory
+	);
+
+	if (!result)
+	{
+		LOG_ERROR("Unable to create Uniform buffer");
+		return false;
+	}
+
+	return true;
+}
+
+bool VulkanSample::CreateStorageBuffer(VkBufferUsageFlags usage,
+	VkDeviceSize size,
+	VkBuffer * buffer,
+	VkDeviceMemory * memory)
+{
+	bool result = CreateBuffer(
+		usage | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+		size,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		buffer,
+		memory
+	);
+
+	if (!result)
+	{
+		LOG_ERROR("Unable to create Storage buffer");
+		return false;
+	}
+
+	return true;
+}
+
+bool VulkanSample::CreateInputAttachment(VkImageType type, 
+	VkFormat format, VkExtent3D size, 
+	VkImageUsageFlags usage, 
+	VkMemoryPropertyFlags propertyFlags, 
+	VkImageViewType viewType, 
+	VkImageAspectFlags aspectFlags, 
+	VkImage * image, 
+	VkDeviceMemory * memory,
+	VkImageView * view)
+{
+	VkFormatProperties formatProperties;
+	vkGetPhysicalDeviceFormatProperties(
+		mPhysicalDevice,
+		format,
+		&formatProperties
+	);
+
+	if (aspectFlags & VK_IMAGE_ASPECT_COLOR_BIT)
+	{
+		if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT))
+		{
+			LOG_ERROR("Provided format is not supported for Color input attachment");
+			return false;
+		}
+	}
+
+	if ((aspectFlags & VK_IMAGE_ASPECT_DEPTH_BIT) || (aspectFlags & VK_IMAGE_ASPECT_STENCIL_BIT))
+	{
+		if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
+		{
+			LOG_ERROR("Provided format is not supported for Depth/Stencil input attachment");
+			return false;
+		}
+	}
+
+	bool result = CreateImage(
+		type,
+		false,
+		format,
+		size,
+		1,
+		1,
+		VK_SAMPLE_COUNT_1_BIT,
+		usage | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		memory,
+		image
+	);
+
+	if (!result)
+	{
+		LOG_ERROR("Unable to Create input attachment image");
+		return false;
+	}
+
+	result = CreateImageView(
+		*image,
+		viewType,
+		format,
+		aspectFlags,
+		view
+	);
+
+	if (!result)
+	{
+		LOG_ERROR("Unable to Create input attachment image view");
+		DestroyImage(*image, *memory);
+		return false;
+	}
+
+	return true;
+}
